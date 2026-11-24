@@ -263,7 +263,8 @@ def in_night(cfg, t=None):
 
 def push(cfg, title, message, urgent=False):
     topic = cfg.get("ntfy_topic", "").strip()
-    print(f"\n[푸시{'(긴급)' if urgent else ''}] {title}\n{message}\n")
+    if not CI:  # 공개 저장소의 실행 기록에는 종목 내용을 남기지 않음
+        print(f"\n[푸시{'(긴급)' if urgent else ''}] {title}\n{message}\n")
     if not topic:
         return False
     body = {"topic": topic, "title": title, "message": message, "priority": 5 if urgent else 3,
