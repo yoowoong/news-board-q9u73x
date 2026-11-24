@@ -3,16 +3,12 @@ name: 주식 뉴스
 on:
   schedule:
     # GitHub 시계는 UTC입니다 (한국시간 = UTC + 9시간)
-    - cron: "30 22 * * 0-4"   # 평일 07:30 아침 브리핑
-    - cron: "0 0-6 * * 1-5"   # 평일 09:00~15:00 매시 (장중 긴급)
-    - cron: "40 6 * * 1-5"    # 평일 15:40 장 마감 정리
-    - cron: "0 13 * * 1-5"    # 평일 22:00 미국장 개장 전
-    - cron: "30 23 * * 5,6"   # 토·일 08:30 주말 요약
-    - cron: "15 * * * *"      # 매시 15분 긴급 확인 + 화면 데이터 갱신
+    - cron: "30 22,1,4,7,10,13 * * *"   # 매일 07:30 10:30 13:30 16:30 19:30 22:30 새 뉴스 묶음 알림
+    - cron: "15 * * * *"                 # 매시 15분 위험 신호 확인(긴급 알림) + 화면 데이터 갱신
   workflow_dispatch:
     inputs:
       mode:
-        description: "collect / urgent / morning / close / us / weekend"
+        description: "collect / urgent / digest"
         default: "collect"
 
 permissions:
@@ -39,11 +35,7 @@ jobs:
         id: mode
         run: |
           case "${{ github.event.schedule }}" in
-            "30 22 * * 0-4") m=morning ;;
-            "0 0-6 * * 1-5") m=urgent ;;
-            "40 6 * * 1-5") m=close ;;
-            "0 13 * * 1-5") m=us ;;
-            "30 23 * * 5,6") m=weekend ;;
+            "30 22,1,4,7,10,13 * * *") m=digest ;;
             "15 * * * *") m=urgent ;;
             *) m="${{ github.event.inputs.mode }}" ;;
           esac

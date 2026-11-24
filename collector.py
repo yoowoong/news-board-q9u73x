@@ -261,13 +261,13 @@ def in_night(cfg, t=None):
     return h >= s or h < e
 
 
-def push(cfg, title, message, urgent=False):
+def push(cfg, title, message, urgent=False, priority=None):
     topic = cfg.get("ntfy_topic", "").strip()
     if not CI:  # 공개 저장소의 실행 기록에는 종목 내용을 남기지 않음
         print(f"\n[푸시{'(긴급)' if urgent else ''}] {title}\n{message}\n")
     if not topic:
         return False
-    body = {"topic": topic, "title": title, "message": message, "priority": 5 if urgent else 3,
+    body = {"topic": topic, "title": title, "message": message, "priority": priority or (5 if urgent else 4),
             "tags": ["rotating_light"] if urgent else ["newspaper"]}
     if cfg.get("대시보드_주소"):
         body["click"] = cfg["대시보드_주소"]
@@ -313,7 +313,7 @@ def run_push(mode, cfg, summaries, issues, state):
     def urgent_text(s, a):
         return f"⚠️ [{s['name']}] {' / '.join(a['risks'])}\n{a['title']} ({a['time'][5:16].replace('T', ' ')})"
 
-    if mode in ("urgent", "us", "close", "morning", "weekend"):
+    if mode in ("urgent", "digest", "us", "close", "morning", "weekend"):
         for s, a, aid in new_urgent:
             if night and not (cfg["야간_초대형_예외_허용"] and a["mega"]):
                 held.append(urgent_text(s, a))  # 아침 브리핑에 "간밤 이슈"로
@@ -321,6 +321,49 @@ def run_push(mode, cfg, summaries, issues, state):
                 continue
             push(cfg, f"긴급: {s['name']} 위험 신호", urgent_text(s, a), urgent=True)
             pushed.add(aid)
+
+    if mode == "digest":
+        if night:
+            state["pushed"] = sorted(pushed)[-2000:]
+            state["held"] = held
+            return
+        notified = set(state.get("notified", []))
+        rank = {"위험": 0, "주의": 1, "보통": 2}
+        rows, new_ids = [], []
+        for s in sorted(summaries, key=lambda x: rank[x["risk"]]):
+            for a in s["news"]:
+                aid = article_id(s["name"], a)
+                if aid in notified or aid in pushed:
+                    continue
+                new_ids.append(aid)
+                mark = {"긍정": "▲", "부정": "▼", "중립": "·"}[a["sentiment"]]
+                hhmm = a["time"][5:16].replace("T", " ")
+                rows.append(f"{mark} [{s['name']}] {a['title']} ({hhmm})")
+        parts = []
+        had_held = bool(held)
+        if held:
+            parts.append("🌙 간밤 이슈\n" + "\n".join(held[:8]))
+            held = []
+        if rows:
+            shown = rows[:15]
+            extra = len(rows) - len(shown)
+            parts.append("📰 새 뉴스\n" + "\n".join(shown) + (f"\n…외 {extra}건 (화면에서 확인)" if extra else ""))
+        issue_new = []
+        for i in issues:
+            iid = hashlib.sha1(("issue|" + i["title"]).encode("utf-8")).hexdigest()[:16]
+            if iid not in notified:
+                new_ids.append(iid)
+                issue_new.append(f"· {i['title']}")
+        if issue_new:
+            parts.append("🌍 세계·산업 이슈\n" + "\n".join(issue_new[:3]))
+        if rows or had_held:
+            title = f"새 뉴스 {len(rows)}건 · {t.strftime('%H:%M')} 기준"
+            push(cfg, title, "\n\n".join(parts)[:3500], priority=4)
+        notified.update(new_ids)
+        state["notified"] = sorted(notified)[-4000:]
+        state["pushed"] = sorted(pushed)[-2000:]
+        state["held"] = held
+        return
 
     if mode == "morning" or mode == "weekend":
         parts = []
