@@ -65,7 +65,11 @@ def now():
 
 
 CI = bool(os.environ.get("GITHUB_ACTIONS"))
-PASSWORD = os.environ.get("DATA_PASSWORD", "")
+def _env(k):
+    return os.environ.get(k, "").replace("﻿", "").strip()
+
+
+PASSWORD = _env("DATA_PASSWORD")
 DEFAULT_CFG = {"ntfy_topic": "", "야간_시작": 23, "야간_끝": 7, "야간_초대형_예외_허용": True,
                "뉴스_최대_보관_시간": 96, "종목당_최대_뉴스": 12, "대시보드_주소": ""}
 
@@ -92,16 +96,16 @@ def load_cfg():
     p = BASE / "config.json"
     if p.exists():
         cfg.update(json.loads(p.read_text(encoding="utf-8-sig")))
-    if os.environ.get("NTFY_TOPIC"):
-        cfg["ntfy_topic"] = os.environ["NTFY_TOPIC"].strip()
-    if os.environ.get("DASHBOARD_URL"):
-        cfg["대시보드_주소"] = os.environ["DASHBOARD_URL"].strip()
+    if _env("NTFY_TOPIC"):
+        cfg["ntfy_topic"] = _env("NTFY_TOPIC")
+    if _env("DASHBOARD_URL"):
+        cfg["대시보드_주소"] = _env("DASHBOARD_URL")
     return cfg
 
 
 def load_stocks():
-    if os.environ.get("STOCKS_JSON"):
-        return json.loads(os.environ["STOCKS_JSON"])
+    if _env("STOCKS_JSON"):
+        return json.loads(_env("STOCKS_JSON"))
     return json.loads((BASE / "stocks.json").read_text(encoding="utf-8-sig"))
 
 
