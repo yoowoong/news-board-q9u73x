@@ -60,4 +60,6 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: docs
+      - name: 업로드 반영 대기
+        run: sleep 25
       - uses: actions/deploy-pages@v5
