@@ -1,0 +1,71 @@
+name: 주식 뉴스
+
+on:
+  schedule:
+    # GitHub 시계는 UTC입니다 (한국시간 = UTC + 9시간)
+    - cron: "30 22 * * 0-4"   # 평일 07:30 아침 브리핑
+    - cron: "0 0-6 * * 1-5"   # 평일 09:00~15:00 매시 (장중 긴급)
+    - cron: "40 6 * * 1-5"    # 평일 15:40 장 마감 정리
+    - cron: "0 13 * * 1-5"    # 평일 22:00 미국장 개장 전
+    - cron: "30 23 * * 5,6"   # 토·일 08:30 주말 요약
+    - cron: "15 * * * *"      # 매시 15분 긴급 확인 + 화면 데이터 갱신
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "collect / urgent / morning / close / us / weekend"
+        default: "collect"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: news
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install cryptography
+      - name: 모드 정하기
+        id: mode
+        run: |
+          case "${{ github.event.schedule }}" in
+            "30 22 * * 0-4") m=morning ;;
+            "0 0-6 * * 1-5") m=urgent ;;
+            "40 6 * * 1-5") m=close ;;
+            "0 13 * * 1-5") m=us ;;
+            "30 23 * * 5,6") m=weekend ;;
+            "15 * * * *") m=urgent ;;
+            *) m="${{ github.event.inputs.mode }}" ;;
+          esac
+          echo "mode=${m:-collect}" >> "$GITHUB_OUTPUT"
+      - name: 뉴스 모으기·알림
+        env:
+          STOCKS_JSON: ${{ secrets.STOCKS_JSON }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          DATA_PASSWORD: ${{ secrets.DATA_PASSWORD }}
+          DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
+        run: python collector.py "${{ steps.mode.outputs.mode }}"
+      - name: 알림 기록 저장
+        run: |
+          if [ -n "$(git status --porcelain state.enc.json)" ]; then
+            git config user.name "news-bot"
+            git config user.email "news-bot@users.noreply.github.com"
+            git add state.enc.json
+            git commit -m "알림 기록 갱신"
+            git pull --rebase
+            git push
+          fi
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - uses: actions/deploy-pages@v4

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>내 주식 뉴스 대시보드</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--ink:#1c2330;--sub:#667085;--line:#e4e7ec;--pos:#d92d20;--neg:#1d4ed8;--risk:#b42318;--warn:#b54708;--ok:#067647}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Malgun Gothic",system-ui,sans-serif}
+  header{padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+  h1{font-size:18px;margin:0}
+  .meta{font-size:12px;color:var(--sub)}
+  button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
+  main{max-width:1100px;margin:0 auto;padding:12px}
+  section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+  h2{font-size:16px;margin:0 0 10px}
+  .note{font-size:12px;color:var(--sub);margin:6px 0 0}
+  .alerts .item{padding:8px 10px;border-left:4px solid var(--risk);background:#fef3f2;border-radius:6px;margin-bottom:6px;font-size:14px}
+  .tabs{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+  .tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+  th{font-size:12px;color:var(--sub);font-weight:600}
+  tr.row{cursor:pointer}
+  tr.row:hover{background:#f9fafb}
+  .tablewrap{overflow-x:auto}
+  .badge{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:700}
+  .b-risk{background:#fee4e2;color:var(--risk)}
+  .b-warn{background:#fef0c7;color:var(--warn)}
+  .b-ok{background:#ecfdf3;color:var(--ok)}
+  .b-up{background:#fff1f3;color:var(--pos)}
+  .b-quiet{background:#f2f4f7;color:var(--sub)}
+  .pos{color:var(--pos)}.neg{color:var(--neg)}
+  .bar{display:inline-flex;width:90px;height:10px;border-radius:5px;overflow:hidden;background:#eee;vertical-align:middle}
+  .bar i{display:block;height:100%}
+  .detail td{white-space:normal;background:#fafafa}
+  .news{padding:6px 0;border-bottom:1px dashed var(--line);font-size:14px}
+  .news a{color:var(--ink);text-decoration:none}
+  .news a:hover{text-decoration:underline}
+  .tag{font-size:11px;padding:0 6px;border-radius:4px;margin-right:4px;font-weight:700}
+  .t-pos{background:#fff1f3;color:var(--pos)}.t-neg{background:#eff4ff;color:var(--neg)}.t-neu{background:#f2f4f7;color:var(--sub)}
+  .t-urg{background:#fee4e2;color:var(--risk)}
+  .src{font-size:12px;color:var(--sub)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .quiet-list{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{padding:4px 10px;border-radius:99px;background:#f2f4f7;font-size:13px}
+  svg text{font-family:inherit}
+  .legend{font-size:12px;color:var(--sub);margin-top:4px}
+  .legend b{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 3px 0 10px;vertical-align:middle}
+  #err{display:none;background:#fef3f2;color:var(--risk);padding:10px;border-radius:8px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>📰 내 주식 뉴스 대시보드</h1><div class="meta" id="meta">불러오는 중…</div></div>
+  <button id="refresh">다시 불러오기</button>
+</header>
+<main>
+  <div id="err"></div>
+  <section class="alerts" id="alerts" style="display:none"><h2>🚨 위험 신호</h2><div id="alertList"></div>
+    <p class="note">뉴스 제목의 단어로 자동 판단한 것입니다. 오탐이 있을 수 있으니 반드시 원문 링크와 증권사 앱 공시로 확인하세요.</p></section>
+
+  <section><h2>📊 종목별 현황</h2>
+    <div class="tabs" id="tabs"></div>
+    <div class="tablewrap"><table id="tbl"></table></div>
+    <p class="note">행을 누르면 그 종목의 뉴스가 펼쳐집니다. 빨강=긍정(▲), 파랑=부정(▼) (증권앱 색 기준). 수익률은 사진을 찍은 시점 값입니다.</p>
+  </section>
+
+  <div class="grid2">
+    <section><h2>📈 종목별 뉴스 건수 (최근 4일)</h2><div id="chart1"></div>
+      <div class="legend"><b style="background:var(--pos)"></b>긍정<b style="background:#98a2b3"></b>중립<b style="background:var(--neg)"></b>부정</div></section>
+    <section><h2>📉 전체 감성 추이 (일자별)</h2><div id="chart2"></div>
+      <div class="legend"><b style="background:var(--pos)"></b>긍정<b style="background:var(--neg)"></b>부정</div></section>
+  </div>
+
+  <section><h2>🤫 조용한 종목</h2><div class="quiet-list" id="quiet"></div>
+    <p class="note">최근 48시간 동안 새 뉴스가 없거나 1건 이하인 종목입니다. 뉴스가 없다고 안전하다는 뜻은 아닙니다.</p></section>
+
+  <section><h2>🌍 세계·산업 이슈</h2><div id="issues"></div></section>
+  <p class="note" style="text-align:center">뉴스 요약과 위험 신호 표시만 제공합니다. 매수·매도 판단은 직접 하세요.</p>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+let D=null, filter="전체", open=null;
+const fmt=iso=>{if(!iso)return"-";const d=new Date(iso),n=new Date(),m=Math.round((n-d)/60000);
+  if(m<60)return m+"분 전"; if(m<1440)return Math.floor(m/60)+"시간 전";
+  return (d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");};
+const fullTime=iso=>{const d=new Date(iso);return (d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const tag=s=>s==="긍정"?'<span class="tag t-pos">긍정</span>':s==="부정"?'<span class="tag t-neg">부정</span>':'<span class="tag t-neu">중립</span>';
+
+const b64=x=>Uint8Array.from(atob(x),c=>c.charCodeAt(0));
+async function decryptBlob(blob,pw){
+  const km=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),"PBKDF2",false,["deriveKey"]);
+  const key=await crypto.subtle.deriveKey({name:"PBKDF2",salt:b64(blob.salt),iterations:200000,hash:"SHA-256"},km,{name:"AES-GCM",length:256},false,["decrypt"]);
+  const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:b64(blob.iv)},key,b64(blob.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+// 링크 뒤의 #k=암호 를 한 번 저장하고 주소창에서 지움
+if(location.hash.startsWith("#k=")){localStorage.setItem("pw",decodeURIComponent(location.hash.slice(3)));history.replaceState(null,"",location.pathname)}
+async function load(){
+  $("#meta").textContent="불러오는 중…";
+  let pw=localStorage.getItem("pw");
+  if(!pw){pw=prompt("처음 한 번만 암호를 입력하세요");if(!pw){$("#meta").textContent="암호가 필요합니다. 새로고침 후 입력하세요.";return}}
+  let blob;
+  try{const r=await fetch("data.enc.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw 0;blob=await r.json()}
+  catch(e){$("#meta").textContent="아직 데이터가 없습니다. 잠시 후 다시 열어 보세요.";return}
+  try{D=await decryptBlob(blob,pw)}
+  catch(e){localStorage.removeItem("pw");$("#meta").textContent="암호가 맞지 않습니다. 새로고침 후 다시 입력하세요.";return}
+  localStorage.setItem("pw",pw);
+  render();
+}
+
+function render(){
+  const upd=new Date(D.updated);
+  $("#meta").textContent="마지막 갱신 "+fullTime(D.updated)+" · 푸시 "+(D.settings.push_on?"켜짐":"꺼짐")+" · 야간 "+D.settings.night+" 무음";
+  // 위험 알림
+  const al=[];
+  D.stocks.forEach(s=>s.news.filter(a=>a.urgent).forEach(a=>al.push({s,a})));
+  al.sort((x,y)=>y.a.time.localeCompare(x.a.time));
+  $("#alerts").style.display=al.length?"block":"none";
+  $("#alertList").innerHTML=al.map(({s,a})=>`<div class="item"><b>${esc(s.name)}</b> · ${a.risks.map(esc).join(", ")}<br><a href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.title)}</a> <span class="src">${esc(a.source)} · ${fmt(a.time)}</span></div>`).join("");
+  // 탭
+  const tabs=["전체","국내","해외","위험","호재 증가"];
+  $("#tabs").innerHTML=tabs.map(t=>`<button class="${t===filter?'on':''}" data-t="${t}">${t}</button>`).join("");
+  $("#tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{filter=b.dataset.t;render()});
+  let list=D.stocks.filter(s=>filter==="전체"||s.market===filter||(filter==="위험"&&s.risk!=="보통")||(filter==="호재 증가"&&s.rising));
+  const order={"위험":0,"주의":1,"보통":2};
+  list=[...list].sort((a,b)=>order[a.risk]-order[b.risk]||b.count24-a.count24);
+  let h=`<tr><th>종목</th><th>구분</th><th>수익률</th><th>뉴스(24시간/전체)</th><th>긍정·부정 흐름</th><th>위험도</th><th>상태</th><th>마지막 뉴스</th></tr>`;
+  for(const s of list){
+    const tot=Math.max(s.count,1);
+    const bar=`<span class="bar"><i style="width:${s.pos/tot*100}%;background:var(--pos)"></i><i style="width:${s.neu/tot*100}%;background:#98a2b3"></i><i style="width:${s.neg/tot*100}%;background:var(--neg)"></i></span> <span class="src">▲${s.pos} ▼${s.neg}</span>`;
+    const rb=s.risk==="위험"?'<span class="badge b-risk">위험</span>':s.risk==="주의"?'<span class="badge b-warn">주의</span>':'<span class="badge b-ok">보통</span>';
+    const st=[s.rising?'<span class="badge b-up">호재 증가 중</span>':"",s.quiet?'<span class="badge b-quiet">조용함</span>':""].join(" ");
+    const pnl=s.pnl==null?"-":`<span class="${s.pnl>0?'pos':s.pnl<0?'neg':''}">${s.pnl>0?"+":""}${s.pnl.toFixed(1)}%</span>`;
+    h+=`<tr class="row" data-n="${esc(s.name)}"><td><b>${esc(s.name)}</b>${s.check?' <span title="'+esc(s.check)+'">❓</span>':""}</td><td>${s.market}</td><td>${pnl}</td><td>${s.count24} / ${s.count}</td><td>${bar}</td><td>${rb}${s.risk_reasons.length?' <span class="src">'+s.risk_reasons.map(esc).join(", ")+'</span>':""}</td><td>${st}</td><td>${fmt(s.last_time)}</td></tr>`;
+    if(open===s.name){
+      h+=`<tr class="detail"><td colspan="8">`+(s.news.length?s.news.map(a=>`<div class="news">${tag(a.sentiment)}${a.urgent?'<span class="tag t-urg">긴급</span>':""}<a href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.title)}</a><div class="src">${esc(a.source)} · ${fullTime(a.time)} · 영향받는 종목: ${esc(s.name)}</div></div>`).join(""):"<div class='src'>최근 뉴스가 없습니다.</div>")+`</td></tr>`;
+    }
+  }
+  $("#tbl").innerHTML=h;
+  $("#tbl").querySelectorAll("tr.row").forEach(r=>r.onclick=()=>{open=open===r.dataset.n?null:r.dataset.n;render()});
+  chart1(); chart2();
+  const q=D.stocks.filter(s=>s.quiet||s.count<=1);
+  $("#quiet").innerHTML=q.length?q.map(s=>`<span class="chip">${esc(s.name)} <span class="src">${s.last_time?"마지막 "+fmt(s.last_time):"뉴스 없음"}</span></span>`).join(""):"<span class='src'>모든 종목에 최근 뉴스가 있습니다.</span>";
+  const ig={};D.issues.forEach(i=>(ig[i.group]=ig[i.group]||[]).push(i));
+  $("#issues").innerHTML=Object.keys(ig).map(g=>`<h3 style="font-size:14px;margin:10px 0 4px">${esc(g)}</h3>`+ig[g].slice(0,4).map(i=>`<div class="news">${tag(i.sentiment)}<a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a><div class="src">${esc(i.source)} · ${fullTime(i.time)} · 영향받는 종목: ${i.related.length>6?"전체":i.related.map(esc).join(", ")}</div></div>`).join("")).join("");
+}
+
+function chart1(){
+  const rows=[...D.stocks].sort((a,b)=>b.count-a.count);
+  const W=520,rh=22,H=rows.length*rh+10,L=110,max=Math.max(...rows.map(r=>r.count),1);
+  const sc=(W-L-30)/max;
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  rows.forEach((s,i)=>{const y=i*rh+4;let x=L;
+    g+=`<text x="${L-6}" y="${y+13}" text-anchor="end" font-size="12" fill="#344054">${esc(s.name.length>9?s.name.slice(0,9)+"…":s.name)}</text>`;
+    [["pos","var(--pos)"],["neu","#98a2b3"],["neg","var(--neg)"]].forEach(([k,c])=>{const w=s[k]*sc;if(w>0){g+=`<rect x="${x}" y="${y}" width="${w}" height="15" fill="${c}"/>`;x+=w}});
+    g+=`<text x="${x+5}" y="${y+13}" font-size="12" fill="#667085">${s.count}</text>`;});
+  $("#chart1").innerHTML=g+"</svg>";
+}
+function chart2(){
+  const days=Object.keys(D.stocks[0].series);
+  const tot=days.map(d=>({d,pos:D.stocks.reduce((a,s)=>a+s.series[d].긍정,0),neg:D.stocks.reduce((a,s)=>a+s.series[d].부정,0)}));
+  const W=520,H=230,L=34,B=28,T=10,max=Math.max(...tot.flatMap(t=>[t.pos,t.neg]),1);
+  const x=i=>L+(W-L-20)*i/(days.length-1), y=v=>T+(H-T-B)*(1-v/max);
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%">`;
+  for(let i=0;i<=4;i++){const v=max*i/4;g+=`<line x1="${L}" x2="${W-10}" y1="${y(v)}" y2="${y(v)}" stroke="#eaecf0"/><text x="${L-4}" y="${y(v)+4}" text-anchor="end" font-size="11" fill="#667085">${Math.round(v)}</text>`}
+  tot.forEach((t,i)=>g+=`<text x="${x(i)}" y="${H-8}" text-anchor="middle" font-size="11" fill="#667085">${t.d}</text>`);
+  [["pos","var(--pos)"],["neg","var(--neg)"]].forEach(([k,c])=>{
+    g+=`<polyline fill="none" stroke="${c}" stroke-width="2.5" points="${tot.map((t,i)=>x(i)+","+y(t[k])).join(" ")}"/>`;
+    tot.forEach((t,i)=>g+=`<circle cx="${x(i)}" cy="${y(t[k])}" r="3.5" fill="${c}"><title>${t.d} ${k==="pos"?"긍정":"부정"} ${t[k]}건</title></circle>`)});
+  $("#chart2").innerHTML=g+"</svg>";
+}
+$("#refresh").onclick=()=>load();
+load();
+</script>
+</body>
+</html>

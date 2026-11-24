@@ -1,0 +1,8 @@
+stocks.json
+config.json
+data.local.json
+state.json
+__pycache__/
+run_log.txt
+docs/data.enc.json
+.repo-info.local
