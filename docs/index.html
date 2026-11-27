@@ -51,6 +51,13 @@
   svg text{font-family:inherit}
   .legend{font-size:12px;color:var(--sub);margin-top:4px}
   .legend b{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 3px 0 10px;vertical-align:middle}
+  #aiBox textarea{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;resize:vertical}
+  #aiBox .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  #aiBox .chips button{font-size:13px;padding:4px 10px;border-radius:99px;background:#f2f4f7}
+  #aiBox .opts{margin:6px 0;font-size:13px;color:var(--sub)}
+  #aiBox .opts label{margin-right:12px}
+  #aiBox .aibtns{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+  #aiBox .aibtns button{flex:1;min-width:150px;padding:10px;background:var(--ink);color:#fff;border-color:var(--ink);font-weight:700}
   #err{display:none;background:#fef3f2;color:var(--risk);padding:10px;border-radius:8px;margin-bottom:12px}
 </style>
 </head>
@@ -81,8 +88,21 @@
     <p class="note">최근 48시간 동안 새 뉴스가 없거나 1건 이하인 종목입니다. 뉴스가 없다고 안전하다는 뜻은 아닙니다.</p></section>
 
   <section><h2>🌍 세계·산업 이슈</h2><div id="issues"></div></section>
+
+  <section id="aiBox"><h2>🤖 AI에게 물어보기</h2>
+    <div class="chips" id="qChips"></div>
+    <textarea id="q" rows="3" placeholder="질문을 쓰세요. 예: 위험 표시된 종목의 이유를 쉽게 설명해줘"></textarea>
+    <div class="opts"><label><input type="checkbox" id="optPnl" checked> 수익률 포함</label>
+      <label><input type="checkbox" id="optNews" checked> 뉴스 제목 포함</label></div>
+    <div class="aibtns"><button id="btnCopy">① 질문 글 복사</button><button id="btnImg">② 화면 이미지 만들기</button></div>
+    <div id="aiMsg" class="note"></div>
+    <img id="imgPrev" alt="화면 이미지 미리보기" style="display:none;max-width:100%;border:1px solid var(--line);border-radius:8px;margin-top:8px">
+    <p class="note">쓰는 순서: ① 복사 → Claude 앱 등을 열어 붙여넣기. 이미지를 같이 보내려면 ②로 만든 뒤 "공유하기"에서 Claude 앱을 고르세요. 이미지에는 화면에 보이는 수익률이 그대로 나옵니다. 데이터는 이 화면에서 직접 보내는 것이 아니라, 내가 붙여넣는 앱으로만 갑니다.</p>
+  </section>
+
   <p class="note" style="text-align:center">뉴스 요약과 위험 신호 표시만 제공합니다. 매수·매도 판단은 직접 하세요.</p>
 </main>
+<script src="html2canvas.min.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 let D=null, filter="전체", open=null;
@@ -176,7 +196,56 @@ function chart2(){
     tot.forEach((t,i)=>g+=`<circle cx="${x(i)}" cy="${y(t[k])}" r="3.5" fill="${c}"><title>${t.d} ${k==="pos"?"긍정":"부정"} ${t[k]}건</title></circle>`)});
   $("#chart2").innerHTML=g+"</svg>";
 }
-$("#refresh").onclick=()=>load();
+// ---------- AI에게 물어보기 (복사 / 이미지 공유 방식) ----------
+const QS=["위험 표시된 종목의 이유를 쉽게 설명해줘","최근 뉴스에서 호재와 악재를 종목별로 정리해줘","조선·해운 종목들의 뉴스 흐름을 요약해줘","양자컴퓨터 관련 종목들 최근 분위기는?","내가 오늘 꼭 확인해야 할 뉴스 5개만 골라줘","뉴스가 없는 조용한 종목은 왜 그럴까?"];
+$("#qChips").innerHTML=QS.map(t=>`<button type="button">${esc(t)}</button>`).join("");
+$("#qChips").querySelectorAll("button").forEach((b,i)=>b.onclick=()=>{$("#q").value=QS[i];$("#q").focus()});
+const RULES="너는 한국어로 쉽게 설명하는 주식 뉴스 분석 도우미다. 아래 데이터(뉴스 제목, 출처, 시각, 자동 분류)만 근거로 답한다. 데이터에 없는 사실은 추측하지 말고 모른다고 말한다. 매수·매도 권유나 목표가 제시는 하지 않고, 뉴스 흐름·위험 요인·확인할 점만 설명한다. 긍정/부정/위험 표시는 제목 속 단어로 자동 판단한 것이라 틀릴 수 있으니 필요하면 그렇게 지적한다. 질문한 사람은 비개발자 매장 점장이므로 쉬운 말로 짧게 답한다.";
+function buildPrompt(){
+  const pnl=$("#optPnl").checked,news=$("#optNews").checked;
+  const L=[RULES,"","[기준 시각] "+fullTime(D.updated)+" (뉴스는 최근 4일치)","","[종목 현황]"];
+  D.stocks.forEach(s=>{
+    L.push(`- ${s.name}(${s.market})${pnl&&s.pnl!=null?" 수익률 "+s.pnl.toFixed(1)+"%":""} | 뉴스 ${s.count}건(24시간 ${s.count24}) 긍정${s.pos} 부정${s.neg} | 위험도 ${s.risk}${s.risk_reasons.length?"("+s.risk_reasons.join(",")+")":""}${s.rising?" | 호재 증가 중":""}${s.quiet?" | 조용함":""}`);
+    if(news)s.news.slice(0,6).forEach(a=>L.push(`   ${a.sentiment==="긍정"?"▲":a.sentiment==="부정"?"▼":"·"} ${a.title} (${a.source}, ${fullTime(a.time)})${a.urgent?" [위험신호:"+a.risks.join(",")+"]":""}`));
+  });
+  if(news&&D.issues.length){L.push("","[세계·산업 이슈]");D.issues.slice(0,10).forEach(i=>L.push(`- [${i.group}] ${i.title} (${i.source}, ${fullTime(i.time)})`))}
+  L.push("","[질문]",$("#q").value.trim()||"(질문을 아직 쓰지 않았음. 위 내용을 먼저 요약해줘)");
+  return L.join("\n");
+}
+async function copyText(t){
+  try{await navigator.clipboard.writeText(t);return true}
+  catch(e){const ta=document.createElement("textarea");ta.value=t;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();let ok=false;try{ok=document.execCommand("copy")}catch(_){}ta.remove();return ok}
+}
+$("#btnCopy").onclick=async()=>{
+  if(!D){$("#aiMsg").textContent="아직 데이터를 불러오지 못했습니다.";return}
+  const ok=await copyText(buildPrompt());
+  $("#aiMsg").textContent=ok?"복사했습니다. Claude 앱 등을 열어 입력창에 붙여넣으세요.":"복사에 실패했습니다. 브라우저의 클립보드 권한을 확인해 주세요.";
+};
+let shotBlob=null;
+$("#btnImg").onclick=async()=>{
+  const btn=$("#btnImg"),msg=$("#aiMsg");
+  if(!D){msg.textContent="아직 데이터를 불러오지 못했습니다.";return}
+  if(shotBlob){ // 두 번째 누름: 공유
+    const file=new File([shotBlob],"내주식_화면.png",{type:"image/png"});
+    try{
+      if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:"내 주식 화면"});msg.textContent="공유 창에서 Claude 앱을 골라 보내세요. 질문 글은 ①로 복사해 붙여넣으세요.";return}
+    }catch(e){if(e&&e.name==="AbortError")return}
+    const a=document.createElement("a");a.href=URL.createObjectURL(shotBlob);a.download="내주식_화면.png";a.click();
+    msg.textContent="이 폰에서는 바로 공유가 안 돼 사진으로 저장했습니다. Claude 앱에서 사진 첨부로 올리세요.";return;
+  }
+  if(typeof html2canvas==="undefined"){msg.textContent="이미지 도구를 불러오지 못했습니다. 잠시 후 다시 시도하세요.";return}
+  btn.disabled=true;msg.textContent="화면을 이미지로 만드는 중…(몇 초)";
+  try{
+    const cv=await html2canvas(document.querySelector("main"),{scale:1.2,backgroundColor:"#f6f7f9",windowWidth:900,
+      ignoreElements:el=>el.id==="aiBox"||el.id==="err",
+      onclone:doc=>{doc.querySelectorAll(".tablewrap").forEach(e=>e.style.overflow="visible");doc.querySelector("main").style.width="880px"}});
+    shotBlob=await new Promise(r=>cv.toBlob(r,"image/png"));
+    $("#imgPrev").src=URL.createObjectURL(shotBlob);$("#imgPrev").style.display="block";
+    btn.textContent="③ 공유하기 (Claude 앱 선택)";msg.textContent="이미지를 만들었습니다. 아래 미리보기를 확인하고 ③을 누르세요.";
+  }catch(e){msg.textContent="이미지 만들기에 실패했습니다. 화면을 새로고침한 뒤 다시 해 보세요."}
+  btn.disabled=false;
+};
+$("#refresh").onclick=()=>{shotBlob=null;$("#btnImg").textContent="② 화면 이미지 만들기";$("#imgPrev").style.display="none";load()};
 load();
 </script>
 </body>
